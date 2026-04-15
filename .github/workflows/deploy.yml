@@ -1,0 +1,135 @@
+name: Deploy Multi-Vite-React to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Create scripts directory if it doesn't exist
+      run: mkdir -p scripts
+
+    - name: Create build-and-generate.sh script
+      run: |
+        cat << 'EOF' > scripts/build-and-generate.sh
+        #!/bin/bash
+        set -e
+
+        PROJECTS_DIR="projects"
+        OUTPUT_DIR="dist"
+        HOMEPAGE_TEMPLATE="homepage_template.html"
+
+        # Clean up previous build
+        rm -rf "$OUTPUT_DIR"
+        mkdir -p "$OUTPUT_DIR"
+
+        # Create a temporary directory for unzipped projects
+        TEMP_UNZIP_DIR=$(mktemp -d)
+        echo "Temporary unzip directory: $TEMP_UNZIP_DIR"
+
+        # Find all zip files, sort them alphabetically, and process
+        ZIP_FILES=($(find "$PROJECTS_DIR" -name "*.zip" | sort))
+        NUM_ZIP_FILES=${#ZIP_FILES[@]}
+
+        if [ "$NUM_ZIP_FILES" -eq 0 ]; then
+            echo "No zip files found in $PROJECTS_DIR. Exiting."
+            exit 1
+        fi
+
+        echo "Found $NUM_ZIP_FILES zip files: ${ZIP_FILES[@]}"
+
+        HOMEPAGE_LINKS=""
+        SITE_COUNT=0
+
+        for ZIP_FILE in "${ZIP_FILES[@]}"; do
+            SITE_COUNT=$((SITE_COUNT + 1))
+            SITE_NAME="$SITE_COUNT"
+            UNZIP_PATH="$TEMP_UNZIP_DIR/$SITE_NAME"
+            BUILD_PATH="$UNZIP_PATH"
+            FINAL_SITE_PATH="$OUTPUT_DIR/$SITE_NAME"
+
+            echo "Processing $ZIP_FILE..."
+
+            # Unzip the project
+            mkdir -p "$UNZIP_PATH"
+            unzip -q "$ZIP_FILE" -d "$UNZIP_PATH"
+
+            # Find the actual project root (where package.json is)
+            # This handles cases where the zip contains a root folder
+            if [ -f "$UNZIP_PATH/*/package.json" ]; then
+                BUILD_PATH="$(dirname "$UNZIP_PATH"/*/package.json)"
+            elif [ ! -f "$UNZIP_PATH/package.json" ]; then
+                echo "Warning: package.json not found directly in $UNZIP_PATH or its immediate subdirectory. Skipping build for $ZIP_FILE."
+                continue
+            fi
+
+            echo "Building project in $BUILD_PATH"
+
+            # Build the Vite-React project
+            (cd "$BUILD_PATH" && npm install && npm run build)
+
+            # Move built assets to the final output directory
+            mkdir -p "$FINAL_SITE_PATH"
+            mv "$BUILD_PATH/dist/"* "$FINAL_SITE_PATH/"
+
+            HOMEPAGE_LINKS+="<li><a href=\"$SITE_NAME/index.html\">Website $SITE_NAME</a></li>\n"
+        done
+
+        # Generate homepage
+        echo "Generating homepage..."
+        cat << EOT > "$OUTPUT_DIR/index.html"
+        <!DOCTYPE html>
+        <html lang=\"en\">
+        <head>
+            <meta charset=\"UTF-8\">
+            <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+            <title>Vite-React Websites</title>
+            <style>
+                body { font-family: sans-serif; margin: 2em; line-height: 1.6; }
+                ul { list-style: none; padding: 0; }
+                li { margin-bottom: 0.5em; }
+                a { text-decoration: none; color: #007bff; }
+                a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <h1>Welcome to Your Websites</h1>
+            <p>Select a website to view:</p>
+            <ul>
+                $HOMEPAGE_LINKS
+            </ul>
+        </body>
+        </html>
+EOT
+
+        echo "Homepage generated in $OUTPUT_DIR/index.html"
+        echo "Cleaning up temporary directory: $TEMP_UNZIP_DIR"
+        rm -rf "$TEMP_UNZIP_DIR"
+        EOF
+
+    - name: Make script executable
+      run: chmod +x scripts/build-and-generate.sh
+
+    - name: Run build and generate script
+      run: ./scripts/build-and-generate.sh
+
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./dist
+        # Keep existing CNAME file if you have one
+        # cname: example.com
