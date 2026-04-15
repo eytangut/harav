@@ -19,12 +19,12 @@ jobs:
       with:
         node-version: '20'
 
-    - name: Create scripts directory if it doesn't exist
+    - name: Create scripts directory
       run: mkdir -p scripts
 
     - name: Create build-and-generate.sh script
       run: |
-        cat << 'EOF' > scripts/build-and-generate.sh
+        cat << 'EOF_SCRIPT' > scripts/build-and-generate.sh
         #!/bin/bash
         set -e
 
@@ -131,7 +131,7 @@ EOT
         echo "Cleaning up temporary directory: $TEMP_UNZIP_DIR"
         rm -rf "$TEMP_UNZIP_DIR"
         echo "Done!"
-        EOF
+EOF_SCRIPT
 
     - name: Make script executable
       run: chmod +x scripts/build-and-generate.sh
@@ -144,5 +144,3 @@ EOT
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./dist
-        # Keep existing CNAME file if you have one
-        # cname: example.com
