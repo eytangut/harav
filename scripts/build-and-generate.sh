@@ -63,9 +63,9 @@ for ZIP_FILE in "${ZIP_FILES[@]}"; do
     # Build the Vite-React project
     # Using --if-present to handle cases where build script might be named differently
     if [ -f "$BUILD_PATH/package-lock.json" ]; then
-        (cd "$BUILD_PATH" && npm ci && npm run build)
+        (cd "$BUILD_PATH" && npm ci && npm run build --if-present)
     else
-        (cd "$BUILD_PATH" && npm install && npm run build)
+        (cd "$BUILD_PATH" && npm install && npm run build --if-present)
     fi
 
     # Check if build produced a dist folder
