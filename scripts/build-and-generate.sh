@@ -72,7 +72,8 @@ for ZIP_FILE in "${ZIP_FILES[@]}"; do
     if [ -d "$BUILD_PATH/dist" ]; then
         mkdir -p "$FINAL_SITE_PATH"
         cp -a "$BUILD_PATH/dist/." "$FINAL_SITE_PATH/"
-        HOMEPAGE_LINKS+="$(printf '<li><a href="%s/index.html">Website %s</a></li>\n' "$SITE_NAME" "$SITE_NAME")"
+        HOMEPAGE_LINKS+="$(printf '<li><a href="%s/index.html">Website %s</a></li>' "$SITE_NAME" "$SITE_NAME")"
+        HOMEPAGE_LINKS+=$'\n'
         SUCCESSFUL_BUILDS=$((SUCCESSFUL_BUILDS + 1))
         echo "Successfully built and moved $ZIP_FILE to $FINAL_SITE_PATH"
     else
