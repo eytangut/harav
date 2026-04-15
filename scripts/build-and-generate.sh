@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 # Configuration
 ZIP_DIR="."
@@ -14,8 +14,8 @@ TEMP_UNZIP_DIR=$(mktemp -d)
 echo "Temporary unzip directory: $TEMP_UNZIP_DIR"
 
 # Find all zip files in the root (excluding subdirectories to avoid infinite loops or re-processing)
-# and sort them alphabetically
-ZIP_FILES=($(find "$ZIP_DIR" -maxdepth 1 -name "*.zip" | sort))
+# and sort them alphabetically.
+mapfile -d '' ZIP_FILES < <(find "$ZIP_DIR" -maxdepth 1 -type f -name "*.zip" -print0 | sort -z)
 NUM_ZIP_FILES=${#ZIP_FILES[@]}
 
 if [ "$NUM_ZIP_FILES" -eq 0 ]; then
@@ -27,6 +27,13 @@ echo "Found $NUM_ZIP_FILES zip files: ${ZIP_FILES[@]}"
 
 HOMEPAGE_LINKS=""
 SITE_COUNT=0
+SUCCESSFUL_BUILDS=0
+
+cleanup() {
+    echo "Cleaning up temporary directory: $TEMP_UNZIP_DIR"
+    rm -rf "$TEMP_UNZIP_DIR"
+}
+trap cleanup EXIT
 
 for ZIP_FILE in "${ZIP_FILES[@]}"; do
     SITE_COUNT=$((SITE_COUNT + 1))
@@ -35,7 +42,7 @@ for ZIP_FILE in "${ZIP_FILES[@]}"; do
     FINAL_SITE_PATH="$OUTPUT_DIR/$SITE_NAME"
 
     echo "----------------------------------------"
-    echo "Processing $ZIP_FILE as Site #$SITE_NAME..."
+    echo "Processing $(basename "$ZIP_FILE") as Site #$SITE_NAME..."
 
     # Unzip the project
     mkdir -p "$UNZIP_PATH"
@@ -55,18 +62,28 @@ for ZIP_FILE in "${ZIP_FILES[@]}"; do
 
     # Build the Vite-React project
     # Using --if-present to handle cases where build script might be named differently
-    (cd "$BUILD_PATH" && npm install && npm run build --if-present)
+    if [ -f "$BUILD_PATH/package-lock.json" ]; then
+        (cd "$BUILD_PATH" && npm ci && npm run build)
+    else
+        (cd "$BUILD_PATH" && npm install && npm run build)
+    fi
 
     # Check if build produced a dist folder
     if [ -d "$BUILD_PATH/dist" ]; then
         mkdir -p "$FINAL_SITE_PATH"
-        cp -r "$BUILD_PATH/dist/"* "$FINAL_SITE_PATH/"
-        HOMEPAGE_LINKS+="<li><a href=\"$SITE_NAME/index.html\">Website $SITE_NAME</a></li>\n"
+        cp -a "$BUILD_PATH/dist/." "$FINAL_SITE_PATH/"
+        HOMEPAGE_LINKS+="$(printf '<li><a href="%s/index.html">Website %s</a></li>\n' "$SITE_NAME" "$SITE_NAME")"
+        SUCCESSFUL_BUILDS=$((SUCCESSFUL_BUILDS + 1))
         echo "Successfully built and moved $ZIP_FILE to $FINAL_SITE_PATH"
     else
         echo "Error: Build did not produce a 'dist' directory in $BUILD_PATH"
     fi
 done
+
+if [ "$SUCCESSFUL_BUILDS" -eq 0 ]; then
+    echo "No sites were built successfully."
+    exit 1
+fi
 
 # Generate homepage
 echo "----------------------------------------"
@@ -101,6 +118,4 @@ cat << EOT > "$OUTPUT_DIR/index.html"
 EOT
 
 echo "Homepage generated in $OUTPUT_DIR/index.html"
-echo "Cleaning up temporary directory: $TEMP_UNZIP_DIR"
-rm -rf "$TEMP_UNZIP_DIR"
 echo "Done!"
